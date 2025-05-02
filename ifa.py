@@ -2,18 +2,17 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import datetime
-import seaborn as sb
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Set Streamlit page config
-st.set_page_config(page_title="Stock Price Viewer", layout="wide")
+# Streamlit page settings
+st.set_page_config(page_title="Indian Stock Visualizer", layout="wide")
 
-# Title
-st.title("📈 Indian Stock Price Visualizer")
+st.title("📊 Indian Stock Price Viewer")
 
 # Date range
-s = datetime.datetime(2023, 1, 1)
-e = datetime.datetime(2025, 5, 1)
+start_date = datetime.datetime(2023, 1, 1)
+end_date = datetime.datetime(2025, 5, 1)
 
 @st.cache_data
 def load_data():
@@ -25,32 +24,36 @@ def load_data():
         'MRF': 'MRF.NS',
         'HDFC': 'HDFCBANK.NS'
     }
-
+    
     all_data = []
     for name, symbol in tickers.items():
-        df = yf.download(symbol, start=s, end=e)
-        df.columns = df.columns.get_level_values(0)
-        df = df.reset_index()
-        df['Symbol'] = name
-        all_data.append(df)
+        df = yf.download(symbol, start=start_date, end=end_date)
+        if not df.empty:
+            df.columns = df.columns.get_level_values(0)  # flatten columns
+            df = df.reset_index()
+            df['Symbol'] = name
+            all_data.append(df)
+    
+    return pd.concat(all_data, axis=0) if all_data else pd.DataFrame()
 
-    return pd.concat(all_data, axis=0)
-
+# Load stock data
 df = load_data()
 
-# Stock selection
-stock_options = df['Symbol'].unique().tolist()
-st.sidebar.title("Select a Stock")
-selected_stock = st.sidebar.selectbox("Choose a stock to visualize:", stock_options)
+if df.empty:
+    st.error("Failed to load stock data. Please check your internet connection or try again later.")
+else:
+    # Sidebar for stock selection
+    stock_list = df['Symbol'].unique().tolist()
+    selected_stock = st.sidebar.selectbox("Select a Stock", stock_list)
 
-# Filtered data
-stk = df[df['Symbol'] == selected_stock]
+    stk = df[df['Symbol'] == selected_stock]
 
-# Plotting
-st.subheader(f"Closing Price Trend for {selected_stock}")
-fig, ax = plt.subplots(figsize=(12, 5))
-sb.lineplot(x='Date', y='Close', data=stk, ax=ax)
-plt.xticks(rotation=45)
-plt.xlabel("Date")
-plt.ylabel("Closing Price (INR)")
-st.pyplot(fig)
+    st.subheader(f"📈 Closing Price for {selected_stock}")
+
+    # Plotting
+    fig, ax = plt.subplots(figsize=(12, 5))
+    sns.lineplot(data=stk, x='Date', y='Close', ax=ax)
+    plt.xlabel("Date")
+    plt.ylabel("Closing Price (INR)")
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
