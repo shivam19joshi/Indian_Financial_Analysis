@@ -1,59 +1,125 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
 import datetime
-import matplotlib.pyplot as plt
+import yfinance as yf
 import seaborn as sns
+import matplotlib.pyplot as plt
+import plotly.express as px
 
-# Streamlit page settings
-st.set_page_config(page_title="Indian Stock Visualizer", layout="wide")
+# Page configuration
+st.set_page_config(page_title="Tokyo Stock Explorer", layout="wide")
 
-st.title("📊 Indian Stock Price Viewer")
+# Remove Background Image and Style (Just default background and black text)
+def remove_bg():
+    st.markdown(
+         """
+         <style>
+         .stApp {{
+             background-color: white;  /* Default background color */
+             color: black;  /* Text color */
+         }}
+         .stApp > .main {{
+             background-color: rgba(255, 255, 255, 0.8);  /* Slight transparency for better readability */
+         }}
+         h1, h2, h3, h4, h5, h6, p {{
+             color: black;  /* Ensuring all text is black */
+         }}
+         .stSidebar {{
+             background-color: rgba(255, 255, 255, 0.9); /* Optional: Add a slight transparent background to sidebar */
+             color: black;
+         }}
+         </style>
+         """,
+         unsafe_allow_html=True
+     )
 
-# Date range
-start_date = datetime.datetime(2023, 1, 1)
-end_date = datetime.datetime(2025, 5, 1)
+remove_bg()
 
+# App Title
+st.title("📈 Tokyo Stock Price Explorer")
+st.write("Explore major Japanese companies' stock prices between April 2023 and April 2025.")
+
+# Dates
+start_date = datetime.datetime(2023, 4, 1)
+end_date = datetime.datetime(2025, 4, 27)
+
+# Load data function
 @st.cache_data
 def load_data():
-    tickers = {
-        'WIPRO': 'WIPRO.NS',
-        'TCS': 'TCS.NS',
-        'IRFC': 'IRFC.NS',
-        'IRCTC': 'IRCTC.NS',
-        'MRF': 'MRF.NS',
-        'HDFC': 'HDFCBANK.NS'
+    companies = {
+        'SONY': '6758.T',
+        'TOYOTA': '7203.T',
+        'HONDA': '7267.T',
+        'MITSUBISHI CORP': '8058.T',
+        'NISSAN MOTOR CORP': '7201.T',
+        'NIPPON STEEL CORP': '5401.T',
+        'HITACHI': '6501.T',
+        'NINTENDO': '7974.T',
+        'FUJITSU': '6702.T',
+        'JAPAN AIRLINES': '9201.T'
     }
     
-    all_data = []
-    for name, symbol in tickers.items():
-        df = yf.download(symbol, start=start_date, end=end_date)
-        if not df.empty:
-            df.columns = df.columns.get_level_values(0)  # flatten columns
-            df = df.reset_index()
-            df['Symbol'] = name
-            all_data.append(df)
+    frames = []
+    for name, ticker in companies.items():
+        data = yf.download(ticker, start=start_date, end=end_date)
+        data.columns = data.columns.get_level_values(0)
+        data = data.reset_index()
+        data['Symbol'] = name
+        frames.append(data)
     
-    return pd.concat(all_data, axis=0) if all_data else pd.DataFrame()
+    df = pd.concat(frames, axis=0)
+    df['Price_change'] = df['Close'] - df['Open']
+    df['High_Low_Spread'] = df['High'] - df['Low']
+    df['Close_Open_Spread'] = df['Close'] - df['Open']
+    return df
 
-# Load stock data
-df = load_data()
+# Show loading spinner
+with st.spinner('Fetching stock data... Please wait...'):
+    df = load_data()
 
-if df.empty:
-    st.error("Failed to load stock data. Please check your internet connection or try again later.")
-else:
-    # Sidebar for stock selection
-    stock_list = df['Symbol'].unique().tolist()
-    selected_stock = st.sidebar.selectbox("Select a Stock", stock_list)
+# Sidebar - Stock selection
+st.sidebar.header("Select Stock")
+symbols = df.Symbol.unique()
+selected_stock = st.sidebar.selectbox("Choose a stock to visualize:", symbols)
 
-    stk = df[df['Symbol'] == selected_stock]
+# Sidebar - Chart settings
+st.sidebar.header("Chart Settings")
+chart_type = st.sidebar.radio("Choose chart type:", ['Static (Seaborn)', 'Interactive (Plotly)'])
 
-    st.subheader(f"📈 Closing Price for {selected_stock}")
+# Sidebar - Download data
+st.sidebar.header("Download Data")
+@st.cache_data
+def convert_df(df):
+    return df.to_csv(index=False).encode('utf-8')
 
-    # Plotting
-    fig, ax = plt.subplots(figsize=(12, 5))
-    sns.lineplot(data=stk, x='Date', y='Close', ax=ax)
-    plt.xlabel("Date")
-    plt.ylabel("Closing Price (INR)")
+csv = convert_df(df)
+
+st.sidebar.download_button(
+    label="Download full dataset as CSV",
+    data=csv,
+    file_name='tokyo_index.csv',
+    mime='text/csv',
+)
+
+# Filter selected stock
+stk = df[df.Symbol == selected_stock]
+
+# Main Area - Plotting
+st.subheader(f"📊 Closing Price Trend for {selected_stock}")
+
+if chart_type == 'Static (Seaborn)':
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.lineplot(x=stk.Date, y=stk.Close, ax=ax)
     plt.xticks(rotation=45)
+    plt.xlabel("Date")
+    plt.ylabel("Close Price (JPY)")
+    plt.title(f"{selected_stock} Stock Price Over Time")
     st.pyplot(fig)
+else:
+    fig = px.line(stk, x='Date', y='Close', title=f"{selected_stock} Stock Price Over Time (Interactive)")
+    fig.update_xaxes(rangeslider_visible=True)
+    st.plotly_chart(fig, use_container_width=True)
+
+# Checkbox - Show Full Dataset
+if st.checkbox("Show Full Dataset"):
+    st.dataframe(df)
